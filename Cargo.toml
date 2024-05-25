@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 thiserror = "1.0.61"
-trace = "0.1.7"
 simple-broadcaster = { git = "https://github.com/rajputrajat/simple-broadcaster" }
+tracing = "0.1.40"

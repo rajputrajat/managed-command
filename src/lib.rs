@@ -6,6 +6,7 @@ use std::{
     thread,
 };
 use thiserror::Error as ThisError;
+use tracing::{self, trace};
 
 pub struct Command {
     std_command: StdCommand,
@@ -35,38 +36,52 @@ impl Command {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
+        let cmd = self
+            .std_command
+            .get_program()
+            .to_owned()
+            .into_string()
+            .unwrap();
         if let Some(mut stdin) = pid.stdin.take() {
+            let cmd = cmd.clone();
             thread::spawn(move || {
                 while let Ok(stdin_text) = rx_in.recv() {
                     let stdin_text: String = stdin_text;
                     stdin.write_all(stdin_text.as_bytes()).unwrap();
                 }
+                trace!("exiting the stdin thread of '{cmd:}'");
             });
         }
         if let Some(mut stdout) = pid.stdout.take() {
+            let cmd = cmd.clone();
             thread::spawn(move || {
                 let mut buf: [u8; 128] = [0; 128];
                 while stdout.read(&mut buf).is_ok() {
                     let stdout_text = String::from_utf8_lossy(&buf);
                     tx_out.send(stdout_text.into_owned()).unwrap();
                 }
+                trace!("exiting the stdout thread of '{cmd:}'");
             });
         }
 
         if let Some(mut stderr) = pid.stderr.take() {
+            let cmd = cmd.clone();
             thread::spawn(move || {
                 let mut buf: [u8; 128] = [0; 128];
                 while stderr.read(&mut buf).is_ok() {
                     let stderr_text = String::from_utf8_lossy(&buf);
                     tx_err.send(stderr_text.into_owned()).unwrap();
                 }
+                trace!("exiting the stderr thread of '{cmd:}'");
             });
         }
 
         thread::spawn(move || {
+            let cmd = cmd.clone();
             if let Ok(_) = canceller.recv() {
                 let _ = pid.kill();
             }
+            trace!("exiting the canceller thread of '{cmd:}'");
         });
 
         Ok((
