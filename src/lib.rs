@@ -1,9 +1,8 @@
 use simple_broadcaster::Subscriber;
 use std::{
-    any::Any,
-    io::{self, Write},
+    io::{self, Read, Write},
     process::{Command as StdCommand, Stdio},
-    sync::mpsc::{channel, Receiver, Sender},
+    sync::mpsc::{self, channel, Receiver, Sender},
     thread,
 };
 use thiserror::Error as ThisError;
@@ -30,30 +29,45 @@ impl Command {
         let (tx_in, rx_in) = channel::<String>();
         let (tx_out, rx_out) = channel::<String>();
         let (tx_err, rx_err) = channel::<String>();
-        let pid = self
+        let mut pid = self
             .std_command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-        let handle_stdin_read = pid.stdin.map(|mut stdin| {
-            thread::spawn(move || -> Result<(), Error> {
+        if let Some(mut stdin) = pid.stdin.take() {
+            thread::spawn(move || {
                 while let Ok(stdin_text) = rx_in.recv() {
                     let stdin_text: String = stdin_text;
-                    stdin.write(stdin_text.as_bytes())?;
+                    stdin.write(stdin_text.as_bytes()).unwrap();
                 }
-                Ok(())
-            })
-        });
-        let handle_stdout_write = pid
-            .stdout
-            .map(|mut stdout| thread::spawn(move || -> Result {}));
-
-        if let Some(stderr) = pid.stderr {}
-
-        if let Some(handle_val) = handle_stdin_read {
-            handle_val.join()?;
+            });
         }
+        if let Some(mut stdout) = pid.stdout.take() {
+            thread::spawn(move || {
+                let mut buf: [u8; 128] = [0; 128];
+                while let Ok(_) = stdout.read(&mut buf) {
+                    let stdout_text = String::from_utf8_lossy(&buf);
+                    tx_out.send(stdout_text.into_owned()).unwrap();
+                }
+            });
+        }
+
+        if let Some(mut stderr) = pid.stderr.take() {
+            thread::spawn(move || {
+                let mut buf: [u8; 128] = [0; 128];
+                while let Ok(_) = stderr.read(&mut buf) {
+                    let stderr_text = String::from_utf8_lossy(&buf);
+                    tx_err.send(stderr_text.into_owned()).unwrap();
+                }
+            });
+        }
+
+        thread::spawn(move || {
+            if let Ok(_) = canceller.recv() {
+                let _ = pid.kill();
+            }
+        });
 
         Ok((
             StdinSender(tx_in),
@@ -66,7 +80,9 @@ impl Command {
 #[derive(Debug, ThisError)]
 pub enum Error {
     #[error(transparent)]
-    FromResidual(#[from] io::Error),
-    #[error("error while joing the thread: {0:?}")]
-    Any(Box<dyn Any + Send>),
+    IoError(#[from] io::Error),
+    #[error(transparent)]
+    SendError(#[from] mpsc::SendError<String>),
+    #[error("thread could not join")]
+    ThreadCouldNotJoin(String),
 }
