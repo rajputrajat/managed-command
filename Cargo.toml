@@ -7,3 +7,7 @@ edition = "2021"
 thiserror = "1.0.61"
 simple-broadcaster = { git = "https://github.com/rajputrajat/simple-broadcaster" }
 tracing = "0.1.40"
+
+[dev-dependencies]
+tracing-subscriber = "*"
+anyhow = "*"

@@ -59,7 +59,9 @@ impl Command {
                 let mut buf: [u8; 128] = [0; 128];
                 while stdout.read(&mut buf).is_ok() {
                     let stdout_text = String::from_utf8_lossy(&buf);
-                    tx_out.send(stdout_text.into_owned()).unwrap();
+                    if tx_out.send(stdout_text.into_owned()).is_err() {
+                        break;
+                    }
                 }
                 trace!("exiting the stdout thread of '{cmd:}'");
             });
@@ -71,7 +73,9 @@ impl Command {
                 let mut buf: [u8; 128] = [0; 128];
                 while stderr.read(&mut buf).is_ok() {
                     let stderr_text = String::from_utf8_lossy(&buf);
-                    tx_err.send(stderr_text.into_owned()).unwrap();
+                    if tx_err.send(stderr_text.into_owned()).is_err() {
+                        break;
+                    }
                 }
                 trace!("exiting the stderr thread of '{cmd:}'");
             });
@@ -119,5 +123,30 @@ impl StdoutReceiver {
 impl StderrReceiver {
     pub fn recv(&self) -> Result<String, RecvError> {
         self.0.recv()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result as AnyResult;
+    use simple_broadcaster::broadcasting_channel;
+    use std::{thread, time::Duration};
+
+    #[test]
+    fn kill_test() -> AnyResult<()> {
+        let _ = tracing_subscriber::fmt::try_init();
+        let (broadcaster, subscriber) = broadcasting_channel("test the managed command");
+        let mut std_cmd = std::process::Command::new("managed-command-test-process");
+        std_cmd.env("PATH", "testing");
+        let mut cmd = Command::from(std_cmd);
+        let (_stdin, _stdout, _stderr) = cmd.run(subscriber)?;
+        trace!("will wait for 1 sec");
+        thread::sleep(Duration::from_secs(1));
+        trace!("will kill the process now. and sleep for 1 more sec");
+        broadcaster.broadcast(())?;
+        thread::sleep(Duration::from_secs(1));
+
+        Ok(())
     }
 }
