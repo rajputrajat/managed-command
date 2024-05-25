@@ -46,8 +46,10 @@ impl Command {
         if let Some(mut stdin) = pid.stdin.take() {
             let cmd = cmd.clone();
             thread::spawn(move || {
+                trace!("'{cmd:}' is in stdin recv");
                 while let Ok(stdin_text) = rx_in.recv() {
                     let stdin_text: String = stdin_text;
+                    trace!("'{cmd:}' received '{stdin_text}' in stdin thread");
                     stdin.write_all(stdin_text.as_bytes()).unwrap();
                 }
                 trace!("exiting the stdin thread of '{cmd:}'");
@@ -57,8 +59,10 @@ impl Command {
             let cmd = cmd.clone();
             thread::spawn(move || {
                 let mut buf: [u8; 128] = [0; 128];
+                trace!("'{cmd:}' is in stdout read");
                 while stdout.read(&mut buf).is_ok() {
                     let stdout_text = String::from_utf8_lossy(&buf);
+                    trace!("'{cmd:}' received '{stdout_text}' in stdout thread");
                     if tx_out.send(stdout_text.into_owned()).is_err() {
                         break;
                     }
@@ -71,8 +75,10 @@ impl Command {
             let cmd = cmd.clone();
             thread::spawn(move || {
                 let mut buf: [u8; 128] = [0; 128];
+                trace!("'{cmd:}' is in stderr read");
                 while stderr.read(&mut buf).is_ok() {
                     let stderr_text = String::from_utf8_lossy(&buf);
+                    trace!("'{cmd:}' received '{stderr_text}' in stderr thread");
                     if tx_err.send(stderr_text.into_owned()).is_err() {
                         break;
                     }
@@ -146,7 +152,26 @@ mod tests {
         trace!("will kill the process now. and sleep for 1 more sec");
         broadcaster.broadcast(())?;
         thread::sleep(Duration::from_secs(1));
+        Ok(())
+    }
 
+    #[test]
+    fn check_input_output() -> AnyResult<()> {
+        let _ = tracing_subscriber::fmt::try_init();
+        let (broadcaster, subscriber) = broadcasting_channel("test the managed command");
+        let mut std_cmd = std::process::Command::new("managed-command-test-process");
+        std_cmd.env("PATH", "testing");
+        let mut cmd = Command::from(std_cmd);
+        let (stdin, stdout, _stderr) = cmd.run(subscriber)?;
+        thread::spawn(move || loop {
+            let out = stdout.recv().unwrap();
+            trace!("received: '{out}'");
+        });
+        stdin.send("second input".to_owned())?;
+        stdin.send("first input".to_owned())?;
+        thread::sleep(Duration::from_secs(1));
+        broadcaster.broadcast(())?;
+        stdin.send("second input".to_owned())?;
         Ok(())
     }
 }
