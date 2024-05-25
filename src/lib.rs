@@ -27,6 +27,13 @@ impl Command {
         &mut self,
         canceller: Subscriber<()>,
     ) -> Result<(StdinSender, StdoutReceiver, StderrReceiver), Error> {
+        let cmd = self
+            .std_command
+            .get_program()
+            .to_owned()
+            .into_string()
+            .unwrap();
+        trace!("preparing to run '{cmd:}'");
         let (tx_in, rx_in) = channel::<String>();
         let (tx_out, rx_out) = channel::<String>();
         let (tx_err, rx_err) = channel::<String>();
@@ -36,12 +43,6 @@ impl Command {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-        let cmd = self
-            .std_command
-            .get_program()
-            .to_owned()
-            .into_string()
-            .unwrap();
         if let Some(mut stdin) = pid.stdin.take() {
             let cmd = cmd.clone();
             thread::spawn(move || {
@@ -76,14 +77,15 @@ impl Command {
             });
         }
 
+        let cmd_ = cmd.clone();
         thread::spawn(move || {
-            let cmd = cmd.clone();
             if let Ok(_) = canceller.recv() {
                 let _ = pid.kill();
             }
-            trace!("exiting the canceller thread of '{cmd:}'");
+            trace!("exiting the canceller thread of '{cmd_:}'");
         });
 
+        trace!("exiting run '{cmd:}'");
         Ok((
             StdinSender(tx_in),
             StdoutReceiver(rx_out),
