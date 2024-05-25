@@ -2,7 +2,7 @@ use simple_broadcaster::Subscriber;
 use std::{
     io::{self, Read, Write},
     process::{Command as StdCommand, Stdio},
-    sync::mpsc::{self, channel, Receiver, Sender},
+    sync::mpsc::{self, channel, Receiver, RecvError, SendError, Sender},
     thread,
 };
 use thiserror::Error as ThisError;
@@ -39,14 +39,14 @@ impl Command {
             thread::spawn(move || {
                 while let Ok(stdin_text) = rx_in.recv() {
                     let stdin_text: String = stdin_text;
-                    stdin.write(stdin_text.as_bytes()).unwrap();
+                    stdin.write_all(stdin_text.as_bytes()).unwrap();
                 }
             });
         }
         if let Some(mut stdout) = pid.stdout.take() {
             thread::spawn(move || {
                 let mut buf: [u8; 128] = [0; 128];
-                while let Ok(_) = stdout.read(&mut buf) {
+                while stdout.read(&mut buf).is_ok() {
                     let stdout_text = String::from_utf8_lossy(&buf);
                     tx_out.send(stdout_text.into_owned()).unwrap();
                 }
@@ -56,7 +56,7 @@ impl Command {
         if let Some(mut stderr) = pid.stderr.take() {
             thread::spawn(move || {
                 let mut buf: [u8; 128] = [0; 128];
-                while let Ok(_) = stderr.read(&mut buf) {
+                while stderr.read(&mut buf).is_ok() {
                     let stderr_text = String::from_utf8_lossy(&buf);
                     tx_err.send(stderr_text.into_owned()).unwrap();
                 }
@@ -85,4 +85,22 @@ pub enum Error {
     SendError(#[from] mpsc::SendError<String>),
     #[error("thread could not join")]
     ThreadCouldNotJoin(String),
+}
+
+impl StdinSender {
+    pub fn send(&self, input: String) -> Result<(), SendError<String>> {
+        self.0.send(input)
+    }
+}
+
+impl StdoutReceiver {
+    pub fn recv(&self) -> Result<String, RecvError> {
+        self.0.recv()
+    }
+}
+
+impl StderrReceiver {
+    pub fn recv(&self) -> Result<String, RecvError> {
+        self.0.recv()
+    }
 }
