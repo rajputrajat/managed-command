@@ -169,9 +169,26 @@ mod tests {
         });
         stdin.send("second input".to_owned())?;
         stdin.send("first input".to_owned())?;
-        thread::sleep(Duration::from_secs(1));
+        thread::sleep(Duration::from_secs(2));
         broadcaster.broadcast(())?;
         stdin.send("second input".to_owned())?;
+        Ok(())
+    }
+
+    #[test]
+    fn check_only_output() -> AnyResult<()> {
+        let _ = tracing_subscriber::fmt::try_init();
+        let (broadcaster, subscriber) = broadcasting_channel("test the managed command");
+        let mut std_cmd = std::process::Command::new("managed-command-test-process");
+        std_cmd.env("PATH", "testing");
+        let mut cmd = Command::from(std_cmd);
+        let (_stdin, stdout, _stderr) = cmd.run(subscriber)?;
+        thread::spawn(move || loop {
+            let out = stdout.recv().unwrap();
+            trace!("received: '{out}'");
+        });
+        thread::sleep(Duration::from_secs(2));
+        broadcaster.broadcast(())?;
         Ok(())
     }
 }
