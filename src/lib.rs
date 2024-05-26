@@ -60,8 +60,12 @@ impl Command {
             thread::spawn(move || {
                 let mut buf: [u8; 128] = [0; 128];
                 trace!("'{cmd:}' is in stdout read");
-                while stdout.read(&mut buf).is_ok() {
-                    let stdout_text = String::from_utf8_lossy(&buf);
+                while let Ok(read_bytes) = stdout.read(&mut buf) {
+                    if read_bytes == 0 {
+                        trace!("'{cmd:}' stdout closed");
+                        break;
+                    }
+                    let stdout_text = String::from_utf8_lossy(&buf[0..read_bytes]);
                     trace!("'{cmd:}' received '{stdout_text}' in stdout thread");
                     if tx_out.send(stdout_text.into_owned()).is_err() {
                         break;
@@ -76,8 +80,12 @@ impl Command {
             thread::spawn(move || {
                 let mut buf: [u8; 128] = [0; 128];
                 trace!("'{cmd:}' is in stderr read");
-                while stderr.read(&mut buf).is_ok() {
-                    let stderr_text = String::from_utf8_lossy(&buf);
+                while let Ok(read_bytes) = stderr.read(&mut buf) {
+                    if read_bytes == 0 {
+                        trace!("'{cmd:}' stderr closed");
+                        break;
+                    }
+                    let stderr_text = String::from_utf8_lossy(&buf[0..read_bytes]);
                     trace!("'{cmd:}' received '{stderr_text}' in stderr thread");
                     if tx_err.send(stderr_text.into_owned()).is_err() {
                         break;
@@ -136,6 +144,7 @@ impl StderrReceiver {
 mod tests {
     use super::*;
     use anyhow::Result as AnyResult;
+    use pretty_assertions::assert_eq;
     use simple_broadcaster::broadcasting_channel;
     use std::{thread, time::Duration};
 
@@ -183,12 +192,14 @@ mod tests {
         std_cmd.env("PATH", "testing");
         let mut cmd = Command::from(std_cmd);
         let (_stdin, stdout, _stderr) = cmd.run(subscriber)?;
-        thread::spawn(move || loop {
+        let thread_handle = thread::spawn(move || loop {
             let out = stdout.recv().unwrap();
             trace!("received: '{out}'");
+            //assert_eq!(out.trim(), "this is the default output!");
         });
         thread::sleep(Duration::from_secs(2));
         broadcaster.broadcast(())?;
+        let _ = thread_handle.join();
         Ok(())
     }
 }

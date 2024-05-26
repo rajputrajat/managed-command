@@ -11,3 +11,4 @@ tracing = "0.1.40"
 [dev-dependencies]
 tracing-subscriber = "*"
 anyhow = "*"
+pretty_assertions = "1"
