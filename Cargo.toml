@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-thiserror = "1.0.61"
+thiserror = "1"
 simple-broadcaster = { git = "https://github.com/rajputrajat/simple-broadcaster" }
-tracing = "0.1.40"
+tracing = "0.1"
 
 [dev-dependencies]
 tracing-subscriber = "*"
