@@ -25,7 +25,7 @@ pub struct StderrReceiver(Receiver<String>);
 impl Command {
     pub fn run(
         &mut self,
-        canceller: Subscriber<()>,
+        canceller: Canceller,
     ) -> Result<(StdinSender, StdoutReceiver, StderrReceiver), Error> {
         let cmd = self
             .std_command
@@ -97,7 +97,7 @@ impl Command {
 
         let cmd_ = cmd.clone();
         thread::spawn(move || {
-            if let Ok(_) = canceller.recv() {
+            if canceller.0.recv().is_ok() {
                 let _ = pid.kill();
             }
             trace!("exiting the canceller thread of '{cmd_:}'");
@@ -140,6 +140,14 @@ impl StderrReceiver {
     }
 }
 
+pub struct Canceller(Subscriber<()>);
+
+impl From<Subscriber<()>> for Canceller {
+    fn from(value: Subscriber<()>) -> Self {
+        Self(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,7 +163,7 @@ mod tests {
         let mut std_cmd = std::process::Command::new("managed-command-test-process");
         std_cmd.env("PATH", "testing");
         let mut cmd = Command::from(std_cmd);
-        let (_stdin, _stdout, _stderr) = cmd.run(subscriber)?;
+        let (_stdin, _stdout, _stderr) = cmd.run(subscriber.into())?;
         trace!("will wait for 1 sec");
         thread::sleep(Duration::from_secs(1));
         trace!("will kill the process now. and sleep for 1 more sec");
@@ -171,11 +179,10 @@ mod tests {
         let mut std_cmd = std::process::Command::new("managed-command-test-process");
         std_cmd.env("PATH", "testing");
         let mut cmd = Command::from(std_cmd);
-        let (stdin, stdout, _stderr) = cmd.run(subscriber)?;
-        let handle = thread::spawn(move || loop {
-            match stdout.recv() {
-                Ok(out) => trace!("received: '{}'", out.trim()),
-                Err(mpsc::RecvError) => break,
+        let (stdin, stdout, _stderr) = cmd.run(subscriber.into())?;
+        let handle = thread::spawn(move || {
+            while let Ok(out) = stdout.recv() {
+                trace!("received: '{}'", out.trim());
             }
         });
         stdin.send("second input\n".to_owned())?;
@@ -194,7 +201,7 @@ mod tests {
         let mut std_cmd = std::process::Command::new("managed-command-test-process");
         std_cmd.env("PATH", "testing");
         let mut cmd = Command::from(std_cmd);
-        let (_stdin, stdout, _stderr) = cmd.run(subscriber)?;
+        let (_stdin, stdout, _stderr) = cmd.run(subscriber.into())?;
         let thread_handle = thread::spawn(move || loop {
             let out = stdout.recv().unwrap();
             trace!("received: '{}'", out.trim());
