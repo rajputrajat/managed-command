@@ -144,7 +144,7 @@ impl StderrReceiver {
 mod tests {
     use super::*;
     use anyhow::Result as AnyResult;
-    use pretty_assertions::assert_eq;
+    // use pretty_assertions::assert_eq;
     use simple_broadcaster::broadcasting_channel;
     use std::{thread, time::Duration};
 
@@ -174,15 +174,15 @@ mod tests {
         let (stdin, stdout, _stderr) = cmd.run(subscriber)?;
         let handle = thread::spawn(move || loop {
             match stdout.recv() {
-                Ok(out) => trace!("received: '{out}'"),
+                Ok(out) => trace!("received: '{}'", out.trim()),
                 Err(mpsc::RecvError) => break,
             }
         });
-        stdin.send("second input".to_owned())?;
-        stdin.send("first input".to_owned())?;
+        stdin.send("second input\n".to_owned())?;
+        stdin.send("first input\n".to_owned())?;
         thread::sleep(Duration::from_secs(2));
         broadcaster.broadcast(())?;
-        stdin.send("second input".to_owned())?;
+        stdin.send("second input\n".to_owned())?;
         let _ = handle.join();
         Ok(())
     }
@@ -197,7 +197,7 @@ mod tests {
         let (_stdin, stdout, _stderr) = cmd.run(subscriber)?;
         let thread_handle = thread::spawn(move || loop {
             let out = stdout.recv().unwrap();
-            trace!("received: '{out}'");
+            trace!("received: '{}'", out.trim());
             //assert_eq!(out.trim(), "this is the default output!");
         });
         thread::sleep(Duration::from_secs(2));
