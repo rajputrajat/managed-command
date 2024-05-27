@@ -172,15 +172,18 @@ mod tests {
         std_cmd.env("PATH", "testing");
         let mut cmd = Command::from(std_cmd);
         let (stdin, stdout, _stderr) = cmd.run(subscriber)?;
-        thread::spawn(move || loop {
-            let out = stdout.recv().unwrap();
-            trace!("received: '{out}'");
+        let handle = thread::spawn(move || loop {
+            match stdout.recv() {
+                Ok(out) => trace!("received: '{out}'"),
+                Err(mpsc::RecvError) => break,
+            }
         });
         stdin.send("second input".to_owned())?;
         stdin.send("first input".to_owned())?;
         thread::sleep(Duration::from_secs(2));
         broadcaster.broadcast(())?;
         stdin.send("second input".to_owned())?;
+        let _ = handle.join();
         Ok(())
     }
 
