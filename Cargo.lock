@@ -188,7 +188,7 @@ dependencies = [
 [[package]]
 name = "simple-broadcaster"
 version = "0.1.0"
-source = "git+https://github.com/rajputrajat/simple-broadcaster#07de7450a9cb538fb5df2e53c8229b7028e44014"
+source = "git+https://github.com/rajputrajat/simple-broadcaster#38ec6b2edd26b96c4be98debeed55f579c340108"
 dependencies = [
  "anyhow",
  "bus",

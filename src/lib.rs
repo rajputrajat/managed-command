@@ -1,4 +1,4 @@
-use simple_broadcaster::Subscriber;
+use simple_broadcaster::Canceller;
 use std::{
     io::{self, Read, Write},
     process::{Command as StdCommand, Stdio},
@@ -137,14 +137,6 @@ impl StdoutReceiver {
 impl StderrReceiver {
     pub fn recv(&self) -> Result<String, RecvError> {
         self.0.recv()
-    }
-}
-
-pub struct Canceller(Subscriber<()>);
-
-impl From<Subscriber<()>> for Canceller {
-    fn from(value: Subscriber<()>) -> Self {
-        Self(value)
     }
 }
 
